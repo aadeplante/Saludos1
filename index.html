@@ -16,12 +16,21 @@
             user-select: none;
             -webkit-user-select: none;
         }
+        /* Canvas de fuegos artificiales (capa superior) */
         #canvas {
             display: block;
             position: absolute;
             top: 0;
             left: 0;
             z-index: 1;
+        }
+        /* Canvas de estrellas (capa fondo) */
+        #canvas-stars {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
         }
         #contenido {
             position: absolute;
@@ -34,9 +43,10 @@
             pointer-events: none;
         }
         h1 {
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             color: #FFD700;
             margin-bottom: 10px;
+            line-height: 1.2;
         }
         h2 {
             font-size: 1rem;
@@ -44,7 +54,7 @@
             margin-bottom: 30px;
         }
         #timer {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             font-weight: bold;
             font-family: 'Courier New', monospace;
             background: rgba(0,0,0,0.3);
@@ -52,6 +62,41 @@
             border-radius: 10px;
             display: inline-block;
         }
+
+        /* ESTILOS PARA LAS COPAS DE BRINDIS */
+        #brindis-container {
+            display: none; /* Se oculta inicialmente */
+            margin-top: 30px;
+            font-size: 4rem;
+        }
+        .copa {
+            display: inline-block;
+            position: relative;
+        }
+        /* Animación Copa Izquierda */
+        .copa-izq {
+            animation: chin-chin-left 2s infinite ease-in-out;
+            transform-origin: bottom right;
+        }
+        /* Animación Copa Derecha */
+        .copa-der {
+            animation: chin-chin-right 2s infinite ease-in-out;
+            transform-origin: bottom left;
+        }
+
+        @keyframes chin-chin-left {
+            0% { transform: rotate(0deg) translateX(0); }
+            40% { transform: rotate(20deg) translateX(10px); } /* Choque */
+            50% { transform: rotate(0deg) translateX(0); } 
+            100% { transform: rotate(0deg) translateX(0); }
+        }
+        @keyframes chin-chin-right {
+            0% { transform: rotate(0deg) translateX(0); }
+            40% { transform: rotate(-20deg) translateX(-10px); } /* Choque */
+            50% { transform: rotate(0deg) translateX(0); }
+            100% { transform: rotate(0deg) translateX(0); }
+        }
+
         /* PANTALLA DE INICIO PARA ACTIVAR SONIDO */
         #overlay {
             position: fixed;
@@ -63,6 +108,7 @@
             align-items: center;
             flex-direction: column;
             cursor: pointer;
+            pointer-events: auto;
         }
         #btn-start {
             border: 2px solid #FFD700;
@@ -81,9 +127,10 @@
         }
 
         @media (min-width: 600px) {
-            h1 { font-size: 3rem; }
+            h1 { font-size: 3.5rem; }
             h2 { font-size: 1.5rem; }
             #timer { font-size: 4rem; }
+            #brindis-container { font-size: 6rem; }
         }
     </style>
 </head>
@@ -95,12 +142,20 @@
         <p style="margin-top:20px; color: #888; font-size: 0.8rem;">Activa el sonido 🔊</p>
     </div>
 
+    <!-- Canvas para las estrellas -->
+    <canvas id="canvas-stars"></canvas>
+    <!-- Canvas original para fuegos artificiales -->
     <canvas id="canvas"></canvas>
 
     <div id="contenido">
         <h1>Ariel A Deplante</h1>
         <h2>te desea que termines bien el año<br>y un feliz año nuevo</h2>
         <div id="timer">Cargando...</div>
+        
+        <!-- Contenedor de las copas -->
+        <div id="brindis-container">
+            <div class="copa copa-izq">🍷</div><div class="copa copa-der">🍷</div>
+        </div>
     </div>
 
     <script>
@@ -111,8 +166,6 @@
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // Crear un buffer de ruido blanco de 2 segundos una sola vez
                 const bufferSize = audioCtx.sampleRate * 2; 
                 noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
                 const data = noiseBuffer.getChannelData(0);
@@ -125,51 +178,35 @@
         function playExplosionSound() {
             if (!audioCtx) return;
             if (audioCtx.state === 'suspended') audioCtx.resume();
-
-            // 1. Nodo de ruido (la fuente)
             const noise = audioCtx.createBufferSource();
             noise.buffer = noiseBuffer;
-
-            // 2. Filtro (para hacerlo sonar más grave, tipo explosión lejana)
             const filter = audioCtx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.value = 1000; // Frecuencia de corte
-
-            // 3. Ganancia (Volumen y Efecto de desvanecimiento)
+            filter.frequency.value = 1000; 
             const gainNode = audioCtx.createGain();
-            
-            // Envolvente de sonido (Envelope) para efecto "golpe seco"
             const now = audioCtx.currentTime;
-            gainNode.gain.setValueAtTime(0.5, now); // Volumen inicial
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3); // Decae rápido (0.3 seg)
-
-            // Conectar los cables virtuales
+            gainNode.gain.setValueAtTime(0.5, now); 
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3); 
             noise.connect(filter);
             filter.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-
             noise.start();
-            noise.stop(now + 0.5); // Detener proceso para ahorrar memoria
+            noise.stop(now + 0.5); 
         }
 
-        // --- MANEJO DEL OVERLAY (INICIO) ---
         const overlay = document.getElementById('overlay');
         overlay.addEventListener('click', () => {
-            initAudio(); // Iniciar contexto de audio
-            
-            // Reproducir un sonido de prueba "Power Up"
+            initAudio(); 
             playExplosionSound();
-            
-            // Ocultar overlay con efecto fade
             overlay.style.transition = "opacity 0.5s";
             overlay.style.opacity = "0";
             setTimeout(() => { overlay.style.display = "none"; }, 500);
         });
 
-
-        // --- 2. CONFIGURACIÓN FECHA ---
+        // --- 2. CONFIGURACIÓN FECHA (AÑO NUEVO 2026) ---
         const fechaObjetivo = new Date("January 1, 2026 00:00:00").getTime();
         const timerElement = document.getElementById("timer");
+        const brindisContainer = document.getElementById("brindis-container");
         
         function actualizarReloj() {
             const ahora = new Date().getTime();
@@ -177,6 +214,9 @@
 
             if (distancia < 0) {
                 timerElement.innerHTML = "¡FELIZ 2026!";
+                timerElement.style.color = "#FFD700";
+                // Mostrar las copas haciendo brindis
+                brindisContainer.style.display = "block";
                 probabilidadFuegos = 0.2; 
                 return;
             }
@@ -197,7 +237,62 @@
         setInterval(actualizarReloj, 1000);
         actualizarReloj();
 
-        // --- 3. LÓGICA VISUAL (CANVAS) ---
+        // --- 3. LOGICA DE ESTRELLAS DE FONDO ---
+        const starCanvas = document.getElementById("canvas-stars");
+        const starCtx = starCanvas.getContext("2d");
+        let estrellas = [];
+        let starW = window.innerWidth;
+        let starH = window.innerHeight;
+        starCanvas.width = starW;
+        starCanvas.height = starH;
+
+        function Estrella() {
+            this.x = Math.random() * starW;
+            this.y = Math.random() * starH;
+            this.radius = Math.random() * 1.5;
+            this.alpha = Math.random();
+            this.speed = Math.random() * 0.02 + 0.005; 
+            this.direction = Math.random() > 0.5 ? 1 : -1;
+        }
+
+        Estrella.prototype.update = function() {
+            this.alpha += this.speed * this.direction;
+            if (this.alpha >= 1) {
+                this.alpha = 1;
+                this.direction = -1;
+            } else if (this.alpha <= 0.2) {
+                this.alpha = 0.2;
+                this.direction = 1;
+            }
+        }
+
+        Estrella.prototype.draw = function() {
+            starCtx.beginPath();
+            starCtx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            starCtx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+            starCtx.fill();
+        }
+
+        function initStars() {
+            estrellas = [];
+            for (let i = 0; i < 200; i++) { 
+                estrellas.push(new Estrella());
+            }
+        }
+
+        function animarEstrellas() {
+            starCtx.clearRect(0, 0, starW, starH);
+            for (let i = 0; i < estrellas.length; i++) {
+                estrellas[i].update();
+                estrellas[i].draw();
+            }
+            requestAnimationFrame(animarEstrellas);
+        }
+
+        initStars();
+        animarEstrellas();
+
+        // --- 4. LÓGICA VISUAL FUEGOS ARTIFICIALES ---
         const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
         let cw = window.innerWidth;
@@ -210,6 +305,11 @@
             ch = window.innerHeight;
             canvas.width = cw;
             canvas.height = ch;
+            starW = window.innerWidth;
+            starH = window.innerHeight;
+            starCanvas.width = starW;
+            starCanvas.height = starH;
+            initStars(); 
         });
 
         let fuegos = [];
@@ -244,9 +344,8 @@
             this.distanciaRecorrida = Math.sqrt(Math.pow(this.sx - this.x, 2) + Math.pow(this.sy - this.y, 2));
             
             if (this.distanciaRecorrida >= this.distanciaAlDestino) {
-                // AQUÍ EXPLOTA EL COHETE
                 crearParticulas(this.tx, this.ty);
-                playExplosionSound(); // <--- SONIDO AGREGADO AQUÍ
+                playExplosionSound(); 
                 fuegos.splice(index, 1);
             } else {
                 this.x += vx;
@@ -303,6 +402,7 @@
         function loop() {
             requestAnimationFrame(loop);
             hue += 0.5;
+            
             ctx.globalCompositeOperation = 'destination-out';
             ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
             ctx.fillRect(0, 0, cw, ch);
